@@ -51,7 +51,6 @@
 #include <protocol/util/AsyncEventServer.h>
 #include <protocol/util/strategy_adapters.h>
 #include <protocol/util/tokenize.h>
-#include <protocol/heartbeat/service.h>
 
 #include <boost/algorithm/string.hpp>
 #include <boost/asio.hpp>
@@ -95,14 +94,9 @@ std::shared_ptr<boost::asio::io_service> create_running_io_service()
     });
 }
 
-struct meta {
-    std::wstring name;
-};
-
 struct server::impl
 {
     std::shared_ptr<boost::asio::io_service>               io_service_ = create_running_io_service();
-    std::shared_ptr<heartbeat::service>                    heartbeat_service_ = std::make_shared<heartbeat::service>(io_service_);
     video_format_repository                                video_format_repository_;
     accelerator::accelerator                               accelerator_;
     std::shared_ptr<amcp::amcp_command_repository>         amcp_command_repo_;
@@ -116,7 +110,6 @@ struct server::impl
     spl::shared_ptr<core::cg_producer_registry>            cg_registry_;
     spl::shared_ptr<core::frame_producer_registry>         producer_registry_;
     spl::shared_ptr<core::frame_consumer_registry>         consumer_registry_;
-    meta                                                   meta_;
     std::function<void(bool)>                              shutdown_server_now_;
 
     impl(const impl&)            = delete;
@@ -134,12 +127,6 @@ struct server::impl
 
     void start()
     {
-        setup_meta(env::properties());
-        CASPAR_LOG(info) << L"Initialized meta.";
-
-        setup_heartbeat(env::properties());
-        CASPAR_LOG(info) << L"Initialized heartbeat.";
-
         setup_video_modes(env::properties());
         CASPAR_LOG(info) << L"Initialized video modes.";
 
@@ -168,7 +155,6 @@ struct server::impl
     {
         std::weak_ptr<boost::asio::io_service> weak_io_service = io_service_;
         io_service_.reset();
-        heartbeat_service_.reset();
         osc_client_.reset();
         amcp_command_repo_wrapper_.reset();
         amcp_command_repo_.reset();
@@ -184,38 +170,6 @@ struct server::impl
 
         uninitialize_modules();
         core::diagnostics::osd::shutdown();
-    }
-
-    void setup_meta(const boost::property_tree::wptree& pt)
-    {
-        using boost::property_tree::wptree;
-
-        meta meta;
-        meta.name = pt.get(L"configuration.meta.name", L"casparcg");
-
-        this->meta_ = meta;
-
-        std::string name_ = u8(meta.name);
-        this->heartbeat_service_->set_name(name_);
-    }
-
-    void setup_heartbeat(const boost::property_tree::wptree& pt)
-    {
-        using boost::property_tree::wptree;
-
-        bool enabled = pt.get(L"configuration.heartbeat.enabled", false);
-        if (!enabled) {
-            CASPAR_LOG(info) << L"Heartbeat disabled. Enable it in the configuration file to enable it.";
-            return;
-        }
-
-        heartbeat::configuration config;
-        config.host  = u8(pt.get(L"configuration.heartbeat.host", L""));
-        config.port  = pt.get(L"configuration.heartbeat.port", config.port);
-
-        config.delay = pt.get(L"configuration.heartbeat.delay", config.delay);
-
-        this->heartbeat_service_->enable(config);
     }
 
     void setup_video_modes(const boost::property_tree::wptree& pt)
