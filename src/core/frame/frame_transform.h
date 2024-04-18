@@ -51,6 +51,17 @@ struct chroma
     double spill_suppress_saturation = 1.0;
 };
 
+struct edgeblend {
+    double left   = 0.0;
+    double right  = 0.0;
+    double top    = 0.0;
+    double bottom = 0.0;
+
+    double g      = 1.8;
+    double p      = 3.0;
+    double a      = 0.5;
+};
+
 struct levels final
 {
     double min_input  = 0.0;
@@ -91,6 +102,7 @@ struct image_transform final
     corners               perspective;
     core::levels          levels;
     core::chroma          chroma;
+    core::edgeblend       edgeblend;
 
     bool             is_key      = false;
     bool             invert      = false;
