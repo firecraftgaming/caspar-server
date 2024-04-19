@@ -10,13 +10,6 @@ set(SOURCES
 		amcp/amcp_args.cpp
 		amcp/amcp_command_repository_wrapper.cpp
 
-		cii/CIICommandsImpl.cpp
-		cii/CIIProtocolStrategy.cpp
-
-		clk/CLKProtocolStrategy.cpp
-		clk/clk_commands.cpp
-		clk/clk_command_processor.cpp
-
 		osc/oscpack/OscOutboundPacketStream.cpp
 		osc/oscpack/OscPrintReceivedElements.cpp
 		osc/oscpack/OscReceivedElements.cpp
@@ -42,14 +35,6 @@ set(HEADERS
 		amcp/amcp_args.h
 		amcp/amcp_command_context.h
 
-		cii/CIICommand.h
-		cii/CIICommandsImpl.h
-		cii/CIIProtocolStrategy.h
-
-		clk/CLKProtocolStrategy.h
-		clk/clk_commands.h
-		clk/clk_command_processor.h
-
 		osc/oscpack/MessageMappingOscPacketListener.h
 		osc/oscpack/OscException.h
 		osc/oscpack/OscHostEndianness.h
@@ -73,15 +58,11 @@ set(HEADERS
 		StdAfx.h
 )
 
-add_library(protocol ${SOURCES} ${HEADERS})
-target_compile_features(protocol PRIVATE cxx_std_14)
+casparcg_add_library(protocol SOURCES ${SOURCES} ${HEADERS})
 target_include_directories(protocol  PRIVATE
     ..
-    ${BOOST_INCLUDE_PATH}
-    ${TBB_INCLUDE_PATH}
     )
 target_precompile_headers(protocol PRIVATE "StdAfx.h")
-configure_file("${PROJECT_SOURCE_DIR}/packages.config" "${CMAKE_CURRENT_BINARY_DIR}/packages.config")
 
 source_group(sources\\amcp amcp/*)
 source_group(sources\\cii cii/*)

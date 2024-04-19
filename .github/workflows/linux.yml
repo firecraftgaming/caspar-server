@@ -14,40 +14,41 @@ jobs:
             packages: write
 
         steps:
-            - uses: actions/checkout@v3
-
-            - name: Login to GitHub Container Registry
-              if: ${{ env.has_token == 'true' }}
-              uses: docker/login-action@v2
-              with:
-                  registry: ghcr.io
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
-              env:
-                  has_token: ${{ !!secrets.GITHUB_TOKEN && github.repository_owner == 'CasparCG' && github.event_name == 'push' }}
-
-            - name: Prepare dependencies
-              run: |
-                  ./tools/linux/ensure-base-images
-              env:
-                  CI: 1
-                  CASPARCG_PUSH_IMAGES: ${{ !!secrets.GITHUB_TOKEN && github.repository_owner == 'CasparCG' && github.event_name == 'push' }}
+            - uses: actions/checkout@v4
 
             - name: Run build
               run: |
                   ./tools/linux/build-in-docker
                   ./tools/linux/extract-from-docker
 
-                  zip -r casparcg_server.zip casparcg_server/
               env:
                   CI: 1
+
+            - name: Download media-scanner
+              uses: robinraju/release-downloader@v1.10
+              with:
+                  repository: "casparcg/media-scanner"
+                  latest: true
+                  fileName: "*-linux-x64.zip"
+                  tarBall: false
+                  zipBall: false
+                  out-file-path: "casparcg_server/media-scanner"
+                  extract: true
+
+            - name: Tidy media-scanner download
+              shell: bash
+              run: |
+                  rm casparcg_server/media-scanner/*.zip
+                  mv casparcg_server/media-scanner/* casparcg_server/
+                  rmdir casparcg_server/media-scanner
+                  chmod +x casparcg_server/scanner
 
             - name: Rename build
               id: "rename-build"
               shell: bash
               run: |
-                  TARGET=casparcg-server-${{ github.sha }}-ubuntu20.zip
-                  mv casparcg_server.zip "$TARGET"
+                  TARGET=casparcg-server-${{ github.sha }}-ubuntu22.zip
+                  zip -r "$TARGET" casparcg_server/
 
                   echo "artifactname=$TARGET" >> $GITHUB_OUTPUT
 
@@ -62,7 +63,7 @@ jobs:
                     fi
                   fi
 
-            - uses: actions/upload-artifact@v3
+            - uses: actions/upload-artifact@v4
               with:
                   name: upload-artifact
                   path: ${{ steps.rename-build.outputs.artifactname }}
