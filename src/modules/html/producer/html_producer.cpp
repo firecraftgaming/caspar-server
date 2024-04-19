@@ -40,10 +40,8 @@
 #include <common/timer.h>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/algorithm/string/split.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
-#include <boost/property_tree/ptree.hpp>
 #include <boost/regex.hpp>
 
 #include <tbb/concurrent_queue.h>
@@ -58,19 +56,11 @@
 #include <include/cef_render_handler.h>
 #pragma warning(pop)
 
+#include <optional>
 #include <queue>
 #include <utility>
 
 #include "../html.h"
-
-#ifdef WIN32
-#include <accelerator/d3d/d3d_device.h>
-#include <accelerator/d3d/d3d_device_context.h>
-#include <accelerator/d3d/d3d_texture2d.h>
-#endif
-
-#pragma comment(lib, "libcef.lib")
-#pragma comment(lib, "libcef_dll_wrapper.lib")
 
 namespace caspar { namespace html {
 
@@ -88,44 +78,41 @@ class html_client
     caspar::timer                       tick_timer_;
     caspar::timer                       frame_timer_;
     caspar::timer                       paint_timer_;
+    caspar::timer                       test_timer_;
 
-    spl::shared_ptr<core::frame_factory> frame_factory_;
-    core::video_format_desc              format_desc_;
-    bool                                 shared_texture_enable_;
-    tbb::concurrent_queue<std::wstring>  javascript_before_load_;
-    std::atomic<bool>                    loaded_;
-    std::queue<core::draw_frame>         frames_;
-    mutable std::mutex                   frames_mutex_;
+    spl::shared_ptr<core::frame_factory>                        frame_factory_;
+    core::video_format_desc                                     format_desc_;
+    bool                                                        gpu_enabled_;
+    tbb::concurrent_queue<std::wstring>                         javascript_before_load_;
+    std::atomic<bool>                                           loaded_;
+    std::queue<std::pair<std::int_least64_t, core::draw_frame>> frames_;
+    mutable std::mutex                                          frames_mutex_;
+    const size_t                                                frames_max_size_ = 4;
+    std::atomic<bool>                                           closing_;
 
-    core::draw_frame last_frame_;
+    core::draw_frame   last_frame_;
+    std::int_least64_t last_frame_time_;
 
     CefRefPtr<CefBrowser> browser_;
-
-#ifdef WIN32
-    std::shared_ptr<accelerator::d3d::d3d_device> const d3d_device_;
-    std::shared_ptr<accelerator::d3d::d3d_texture2d>    d3d_shared_buffer_;
-#endif
 
   public:
     html_client(spl::shared_ptr<core::frame_factory>       frame_factory,
                 const spl::shared_ptr<diagnostics::graph>& graph,
                 core::video_format_desc                    format_desc,
-                bool                                       shared_texture_enable,
+                bool                                       gpu_enabled,
                 std::wstring                               url)
         : url_(std::move(url))
         , graph_(graph)
         , frame_factory_(std::move(frame_factory))
         , format_desc_(std::move(format_desc))
-        , shared_texture_enable_(shared_texture_enable)
-#ifdef WIN32
-        , d3d_device_(accelerator::d3d::d3d_device::get_device())
-#endif
+        , gpu_enabled_(gpu_enabled)
     {
         graph_->set_color("browser-tick-time", diagnostics::color(0.1f, 1.0f, 0.1f));
         graph_->set_color("tick-time", diagnostics::color(0.0f, 0.6f, 0.9f));
         graph_->set_color("dropped-frame", diagnostics::color(0.3f, 0.6f, 0.3f));
         graph_->set_color("late-frame", diagnostics::color(0.6f, 0.1f, 0.1f));
         graph_->set_color("overload", diagnostics::color(0.6f, 0.6f, 0.3f));
+        graph_->set_color("buffered-frames", diagnostics::color(0.2f, 0.9f, 0.9f));
         graph_->set_text(print());
         diagnostics::register_graph(graph_);
 
@@ -134,10 +121,12 @@ class html_client
             state_["file/path"] = u8(url_);
         }
 
-        loaded_ = false;
+        loaded_  = false;
+        closing_ = false;
     }
 
-    void reload() {
+    void reload()
+    {
         html::begin_invoke([=] {
             if (browser_ != nullptr)
                 browser_->Reload();
@@ -146,6 +135,8 @@ class html_client
 
     void close()
     {
+        closing_ = true;
+
         html::invoke([=] {
             if (browser_ != nullptr) {
                 browser_->GetHost()->CloseBrowser(true);
@@ -153,13 +144,41 @@ class html_client
         });
     }
 
-    bool try_pop(const core::video_field field, core::draw_frame& result)
+    bool try_pop(const core::video_field field)
     {
         std::lock_guard<std::mutex> lock(frames_mutex_);
 
         if (!frames_.empty()) {
-            result = std::move(frames_.front());
+            /*
+             * CEF in gpu-enabled mode only sends frames when something changes, and interlaced channels
+             * consume two frames in a short time span.
+             * This can interact poorly and cause the second
+             * field of an animation repeat the first.
+             * If there is a single field in the buffer, it may
+             * want delaying to avoid this stutter.
+             * The hazard here is that sometimes animations will
+             * start a field later than intended.
+             */
+            if (field == core::video_field::a && frames_.size() == 1) {
+                auto now_time = now();
+
+                // Make sure there has been a gap before this pop, of at least a couple of frames
+                auto follows_gap_in_frames = (now_time - last_frame_time_) > 100;
+
+                // Check if the sole buffered frame is too young to have a partner field generated (with a tolerance)
+                auto time_per_frame           = (1000 * 1.5) / format_desc_.fps;
+                auto front_frame_is_too_young = (now_time - frames_.front().first) < time_per_frame;
+
+                if (follows_gap_in_frames && front_frame_is_too_young) {
+                    return false;
+                }
+            }
+
+            last_frame_time_ = frames_.front().first;
+            last_frame_      = std::move(frames_.front().second);
             frames_.pop();
+
+            graph_->set_value("buffered-frames", (double)frames_.size() / frames_max_size_);
 
             return true;
         }
@@ -169,10 +188,7 @@ class html_client
 
     core::draw_frame receive(const core::video_field field)
     {
-        core::draw_frame frame;
-        if (try_pop(field, frame)) {
-            last_frame_ = frame;
-        } else {
+        if (!try_pop(field)) {
             graph_->set_tag(diagnostics::tag_severity::SILENT, "late-frame");
         }
 
@@ -180,6 +196,12 @@ class html_client
     }
 
     core::draw_frame last_frame() const { return last_frame_; }
+
+    bool is_ready() const
+    {
+        std::lock_guard<std::mutex> lock(frames_mutex_);
+        return !frames_.empty() || last_frame_;
+    }
 
     void execute_javascript(const std::wstring& javascript)
     {
@@ -223,6 +245,13 @@ class html_client
     }
 
   private:
+    std::int_least64_t now()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::high_resolution_clock::now().time_since_epoch())
+            .count();
+    }
+
     void GetViewRect(CefRefPtr<CefBrowser> browser, CefRect& rect) override
     {
         CASPAR_ASSERT(CefCurrentlyOn(TID_UI));
@@ -237,7 +266,7 @@ class html_client
                  int                   width,
                  int                   height) override
     {
-        if (shared_texture_enable_)
+        if (closing_)
             return;
 
         graph_->set_value("browser-tick-time", paint_timer_.elapsed() * format_desc_.fps * 0.5);
@@ -247,137 +276,40 @@ class html_client
         if (type != PET_VIEW)
             return;
 
-        core::pixel_format_desc pixel_desc;
-        pixel_desc.format = core::pixel_format::bgra;
-        pixel_desc.planes.push_back(core::pixel_format_desc::plane(width, height, 4));
+        core::pixel_format_desc pixel_desc(core::pixel_format::bgra);
+        pixel_desc.planes.emplace_back(width, height, 4);
 
-        auto frame = frame_factory_->create_frame(this, pixel_desc);
-        auto src   = (char*)buffer;
-        auto dst   = reinterpret_cast<char*>(frame.image_data(0).begin());
+        core::mutable_frame frame = frame_factory_->create_frame(this, pixel_desc);
+        char*               src   = (char*)buffer;
+        char*               dst   = reinterpret_cast<char*>(frame.image_data(0).begin());
+        test_timer_.restart();
+
+#ifdef WIN32
+        if (gpu_enabled_) {
+            int chunksize = height * width;
+            tbb::parallel_for(0, 4, [&](int y) { std::memcpy(dst + y * chunksize, src + y * chunksize, chunksize); });
+        } else {
+            std::memcpy(dst, src, width * height * 4);
+        }
+#else
+        // On my one test linux machine, doing a single memcpy doesn't have the same cost as windows,
+        // making using tbb excessive
         std::memcpy(dst, src, width * height * 4);
+#endif
+
+        graph_->set_value("memcpy", test_timer_.elapsed() * format_desc_.fps * 0.5 * 5);
 
         {
             std::lock_guard<std::mutex> lock(frames_mutex_);
 
-            frames_.push(core::draw_frame(std::move(frame)));
+            frames_.push(std::make_pair(now(), core::draw_frame(std::move(frame))));
             while (frames_.size() > 4) {
                 frames_.pop();
                 graph_->set_tag(diagnostics::tag_severity::WARNING, "dropped-frame");
             }
+            graph_->set_value("buffered-frames", (double)frames_.size() / frames_max_size_);
         }
     }
-
-#ifdef WIN32
-    /*
-    * This is the old implementation, based on the original patch and not the obs variant.
-    * It is kept here for when something gets merged upstream as this might be the needed implementation
-    void OnAcceleratedPaint(CefRefPtr<CefBrowser> browser,
-                            PaintElementType      type,
-                            const RectList&       dirtyRects,
-                            void*                 shared_handle) override
-    {
-        try {
-            if (!shared_texture_enable_)
-                return;
-
-            graph_->set_value("browser-tick-time", paint_timer_.elapsed() * format_desc_.fps * 0.5);
-            paint_timer_.restart();
-            CASPAR_ASSERT(CefCurrentlyOn(TID_UI));
-
-            if (type != PET_VIEW)
-                return;
-
-            if (d3d_shared_buffer_) {
-                if (shared_handle != d3d_shared_buffer_->share_handle())
-                    d3d_shared_buffer_.reset();
-            }
-
-            if (!d3d_shared_buffer_) {
-                d3d_shared_buffer_ = d3d_device_->open_shared_texture(shared_handle);
-                if (!d3d_shared_buffer_)
-                    CASPAR_LOG(error) << print() << L" could not open shared texture!";
-            }
-
-            if (d3d_shared_buffer_ && d3d_shared_buffer_->format() == DXGI_FORMAT_B8G8R8A8_UNORM) {
-                auto             frame = frame_factory_->import_d3d_texture(this, d3d_shared_buffer_, true);
-                core::draw_frame dframe(std::move(frame));
-
-                {
-                    std::lock_guard<std::mutex> lock(frames_mutex_);
-
-                    frames_.push(dframe);
-                    while (frames_.size() > 4) {
-                        frames_.pop();
-                        graph_->set_tag(diagnostics::tag_severity::WARNING, "dropped-frame");
-                    }
-                }
-            }
-        } catch (...) {
-            CASPAR_LOG_CURRENT_EXCEPTION();
-        }
-    }
-    */
-
-    /*
-     * This is where the shared textures get fed into. It is specific to the obs builds (hence the 2 suffix), so might
-     * be removed/renamed when the change is accepted upstream
-     */
-    void OnAcceleratedPaint2(CefRefPtr<CefBrowser> browser,
-                             PaintElementType      type,
-                             const RectList&       dirtyRects,
-                             void*                 shared_handle,
-                             bool                  new_texture) override
-    {
-        try {
-            if (!shared_texture_enable_)
-                return;
-
-            graph_->set_value("browser-tick-time", paint_timer_.elapsed() * format_desc_.fps * 0.5);
-            paint_timer_.restart();
-            CASPAR_ASSERT(CefCurrentlyOn(TID_UI));
-
-            if (type != PET_VIEW)
-                return;
-
-            if (new_texture && d3d_shared_buffer_) {
-                d3d_shared_buffer_.reset();
-            }
-
-            if (!d3d_shared_buffer_) {
-                d3d_shared_buffer_ = d3d_device_->open_shared_texture(shared_handle);
-                if (!d3d_shared_buffer_)
-                    CASPAR_LOG(error) << print() << L" could not open shared texture!";
-            }
-
-            if (d3d_shared_buffer_) {
-                core::pixel_format format = core::pixel_format::invalid;
-                if (d3d_shared_buffer_->format() == DXGI_FORMAT_B8G8R8A8_UNORM) {
-                    format = core::pixel_format::bgra;
-                } else if (d3d_shared_buffer_->format() == DXGI_FORMAT_R8G8B8A8_UNORM) {
-                    format = core::pixel_format::rgba;
-                }
-
-                if (format != core::pixel_format::invalid) {
-                    auto             frame = frame_factory_->import_d3d_texture(this, d3d_shared_buffer_, true, format);
-                    core::draw_frame dframe(std::move(frame));
-
-                    {
-                        std::lock_guard<std::mutex> lock(frames_mutex_);
-
-                        frames_.push(dframe);
-                        while (frames_.size() > 4) {
-                            frames_.pop();
-                            graph_->set_tag(diagnostics::tag_severity::WARNING, "dropped-frame");
-                        }
-                    }
-                }
-            }
-
-        } catch (...) {
-            CASPAR_LOG_CURRENT_EXCEPTION();
-        }
-    }
-#endif
 
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override
     {
@@ -446,7 +378,7 @@ class html_client
 
             {
                 std::lock_guard<std::mutex> lock(frames_mutex_);
-                frames_.push(core::draw_frame::empty());
+                frames_.push(std::make_pair(now(), core::draw_frame::empty()));
             }
 
             {
@@ -509,20 +441,14 @@ class html_producer : public core::frame_producer
         , url_(url)
     {
         html::invoke([&] {
-            const bool enable_gpu            = env::properties().get(L"configuration.html.enable-gpu", false);
-            bool       shared_texture_enable = false;
+            const bool enable_gpu = env::properties().get(L"configuration.html.enable-gpu", false);
 
-#ifdef WIN32
-            shared_texture_enable = enable_gpu && accelerator::d3d::d3d_device::get_device();
-#endif
-
-            client_ = new html_client(frame_factory, graph_, format_desc, shared_texture_enable, url_);
+            client_ = new html_client(frame_factory, graph_, format_desc, enable_gpu, url_);
 
             CefWindowInfo window_info;
             window_info.bounds.width                 = format_desc.square_width;
             window_info.bounds.height                = format_desc.square_height;
             window_info.windowless_rendering_enabled = true;
-            window_info.shared_texture_enabled       = shared_texture_enable;
 
             CefBrowserSettings browser_settings;
             browser_settings.webgl = enable_gpu ? cef_state_t::STATE_ENABLED : cef_state_t::STATE_DISABLED;
@@ -552,6 +478,14 @@ class html_producer : public core::frame_producer
     }
 
     core::draw_frame first_frame(const core::video_field field) override { return receive_impl(field, 0); }
+
+    bool is_ready() override
+    {
+        if (client_ != nullptr) {
+            return client_->is_ready();
+        }
+        return false;
+    }
 
     core::draw_frame last_frame(const core::video_field field) override
     {
@@ -606,8 +540,8 @@ spl::shared_ptr<core::frame_producer> create_cg_producer(const core::frame_produ
 
     const auto url = found_filename ? L"file://" + *found_filename : param_url;
 
-    boost::optional<int> width;
-    boost::optional<int> height;
+    std::optional<int> width;
+    std::optional<int> height;
     {
         auto u8_url = u8(url);
 

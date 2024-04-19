@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.16)
 project (flash)
 
 set(SOURCES
@@ -10,8 +10,6 @@ set(SOURCES
 		util/swf.cpp
 
 		flash.cpp
-		StdAfx.c
-		StdAfx.cpp
 )
 set(HEADERS
 		interop/axflash.h
@@ -26,15 +24,16 @@ set(HEADERS
 		StdAfx.h
 )
 
-add_library(flash ${SOURCES} ${HEADERS})
-add_precompiled_header(flash StdAfx.h FORCEINCLUDE)
-configure_file("${PROJECT_SOURCE_DIR}/packages.config" "${CMAKE_CURRENT_BINARY_DIR}/packages.config")
-
-include_directories(..)
-include_directories(../..)
-include_directories(${BOOST_INCLUDE_PATH})
-include_directories(${TBB_INCLUDE_PATH})
-include_directories(${ZLIB_INCLUDE_PATH})
+casparcg_add_module_project(flash
+	SOURCES ${SOURCES} ${HEADERS} 
+	INIT_FUNCTION "flash::init"
+)
+target_include_directories(flash PRIVATE
+    ..
+    ../..
+    ${ZLIB_INCLUDE_PATH}
+    )
+target_precompile_headers(flash PRIVATE "StdAfx.h")
 
 set_target_properties(flash PROPERTIES FOLDER modules)
 source_group(sources\\interop interop/*)
@@ -42,8 +41,4 @@ source_group(sources\\producer producer/*)
 source_group(sources\\util util/*)
 source_group(sources ./*)
 
-target_link_libraries(flash common core)
 
-casparcg_add_include_statement("modules/flash/flash.h")
-casparcg_add_init_statement("flash::init" "flash")
-casparcg_add_module_project("flash")

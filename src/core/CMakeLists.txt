@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.16)
 project (core)
 
 set(SOURCES
@@ -28,7 +28,6 @@ set(SOURCES
 		producer/layer.cpp
 		producer/stage.cpp
 
-		StdAfx.cpp
 		video_channel.cpp
 		video_format.cpp
 )
@@ -74,15 +73,13 @@ set(HEADERS
 		video_format.h
 )
 
-add_library(core ${SOURCES} ${HEADERS})
-add_precompiled_header(core StdAfx.h FORCEINCLUDE)
-configure_file("${PROJECT_SOURCE_DIR}/packages.config" "${CMAKE_CURRENT_BINARY_DIR}/packages.config")
-
-include_directories(..)
-include_directories(${BOOST_INCLUDE_PATH})
-include_directories(${TBB_INCLUDE_PATH})
-include_directories(${SFML_INCLUDE_PATH})
-include_directories(${GLEW_INCLUDE_PATH})
+casparcg_add_library(core SOURCES ${SOURCES} ${HEADERS})
+target_include_directories(core PRIVATE
+    ..
+    ${SFML_INCLUDE_PATH}
+    ${GLEW_INCLUDE_PATH}
+    )
+target_precompile_headers(core PRIVATE "StdAfx.h")
 
 source_group(sources ./*)
 source_group(sources\\consumer consumer/*)
@@ -98,12 +95,4 @@ source_group(sources\\producer\\route producer/route/*)
 source_group(sources\\producer\\transition producer/transition/*)
 source_group(sources\\producer\\separated producer/separated/*)
 
-if (MSVC)
-	target_link_libraries(core
-			common
-	)
-else()
-	target_link_libraries(core
-			common
-	)
-endif()
+target_link_libraries(core common)

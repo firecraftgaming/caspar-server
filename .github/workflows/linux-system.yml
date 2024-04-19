@@ -13,20 +13,27 @@ jobs:
             matrix:
                 os:
                     - ubuntu-20.04
-                    # - ubuntu-22.04 TODO-enable this once it can use a system ffmpeg too
+                    - ubuntu-22.04
 
         runs-on: ${{ matrix.os }}
 
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
 
             - name: Setup environment
               run: |
                   sudo apt-get update
                   sudo ./tools/linux/install-dependencies
-                  sudo ./tools/linux/extract-deps-from-docker
 
-                  sudo apt-get install libboost-all-dev
+                  sudo apt-get install -y libboost-all-dev \
+                    libavcodec-dev \
+                    libavformat-dev \
+                    libavdevice-dev \
+                    libavutil-dev \
+                    libavfilter-dev \
+                    libswscale-dev \
+                    libpostproc-dev \
+                    libswresample-dev
 
             - name: Run build
               run: |
@@ -34,7 +41,7 @@ jobs:
                   mkdir build
                   cd build
 
-                  cmake ../src -DUSE_SYSTEM_BOOST=ON
+                  cmake ../src -DUSE_STATIC_BOOST=OFF -DUSE_SYSTEM_FFMPEG=ON
                   make -j2
 
               env:

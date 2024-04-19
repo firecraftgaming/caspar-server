@@ -24,6 +24,7 @@
 #include <boost/range/algorithm/equal.hpp>
 
 #include <cmath>
+#include <utility>
 
 namespace caspar { namespace core {
 
@@ -60,7 +61,7 @@ image_transform& image_transform::operator*=(const image_transform& other)
     // TODO (fix)
     auto aspect_ratio = 1.0;
 
-    std::array<double, 2> rotated;
+    std::array<double, 2> rotated{};
 
     auto orig_x = other.fill_translation[0];
     auto orig_y = other.fill_translation[1] / aspect_ratio;
@@ -98,6 +99,13 @@ image_transform& image_transform::operator*=(const image_transform& other)
     chroma.spill_suppress = std::max(other.chroma.spill_suppress, chroma.spill_suppress);
     chroma.spill_suppress_saturation =
         std::min(other.chroma.spill_suppress_saturation, chroma.spill_suppress_saturation);
+    edgeblend.left = std::max(edgeblend.left, other.edgeblend.left);
+    edgeblend.right = std::max(edgeblend.right, other.edgeblend.right);
+    edgeblend.top = std::max(edgeblend.top, other.edgeblend.top);
+    edgeblend.bottom = std::max(edgeblend.bottom, other.edgeblend.bottom);
+    edgeblend.g = std::max(edgeblend.g, other.edgeblend.g);
+    edgeblend.p = std::max(edgeblend.p, other.edgeblend.p);
+    edgeblend.a = std::max(edgeblend.a, other.edgeblend.a);
     is_key |= other.is_key;
     invert |= other.invert;
     is_mix |= other.is_mix;
@@ -115,7 +123,7 @@ image_transform image_transform::operator*(const image_transform& other) const
 double do_tween(double time, double source, double dest, double duration, const tweener& tween)
 {
     return tween(time, source, dest - source, duration);
-};
+}
 
 template <typename Rect>
 void do_tween_rectangle(const Rect&    source,
@@ -144,7 +152,7 @@ void do_tween_corners(const corners& source,
     out.ur[1] = do_tween(time, source.ur[1], dest.ur[1], duration, tweener);
     out.ll[0] = do_tween(time, source.ll[0], dest.ll[0], duration, tweener);
     out.ll[1] = do_tween(time, source.ll[1], dest.ll[1], duration, tweener);
-};
+}
 
 image_transform image_transform::tween(double                 time,
                                        const image_transform& source,
@@ -174,6 +182,10 @@ image_transform image_transform::tween(double                 time,
     result.levels.max_output   = do_tween(time, source.levels.max_output, dest.levels.max_output, duration, tween);
     result.levels.min_output   = do_tween(time, source.levels.min_output, dest.levels.min_output, duration, tween);
     result.levels.gamma        = do_tween(time, source.levels.gamma, dest.levels.gamma, duration, tween);
+    result.edgeblend.bottom        = do_tween(time, source.edgeblend.bottom, dest.edgeblend.bottom, duration, tween);
+    result.edgeblend.top        = do_tween(time, source.edgeblend.top, dest.edgeblend.top, duration, tween);
+    result.edgeblend.right        = do_tween(time, source.edgeblend.right, dest.edgeblend.right, duration, tween);
+    result.edgeblend.left        = do_tween(time, source.edgeblend.left, dest.edgeblend.left, duration, tween);
     result.chroma.target_hue   = do_tween(time, source.chroma.target_hue, dest.chroma.target_hue, duration, tween);
     result.chroma.hue_width    = do_tween(time, source.chroma.hue_width, dest.chroma.hue_width, duration, tween);
     result.chroma.min_saturation =
@@ -199,7 +211,7 @@ image_transform image_transform::tween(double                 time,
     return result;
 }
 
-bool eq(double lhs, double rhs) { return std::abs(lhs - rhs) < 5e-8; };
+bool eq(double lhs, double rhs) { return std::abs(lhs - rhs) < 5e-8; }
 
 bool operator==(const corners& lhs, const corners& rhs)
 {
@@ -227,7 +239,12 @@ bool operator==(const image_transform& lhs, const image_transform& rhs)
            eq(lhs.chroma.min_saturation, rhs.chroma.min_saturation) &&
            eq(lhs.chroma.min_brightness, rhs.chroma.min_brightness) && eq(lhs.chroma.softness, rhs.chroma.softness) &&
            eq(lhs.chroma.spill_suppress, rhs.chroma.spill_suppress) &&
-           eq(lhs.chroma.spill_suppress_saturation, rhs.chroma.spill_suppress_saturation) && lhs.crop == rhs.crop &&
+           eq(lhs.chroma.spill_suppress_saturation, rhs.chroma.spill_suppress_saturation) &&
+           eq(lhs.edgeblend.bottom, rhs.edgeblend.bottom) &&
+           eq(lhs.edgeblend.right, rhs.edgeblend.right) &&
+           eq(lhs.edgeblend.left, rhs.edgeblend.left) &&
+           eq(lhs.edgeblend.top, rhs.edgeblend.top) &&
+           lhs.crop == rhs.crop &&
            lhs.perspective == rhs.perspective;
 }
 
@@ -263,7 +280,7 @@ bool operator==(const audio_transform& lhs, const audio_transform& rhs) { return
 bool operator!=(const audio_transform& lhs, const audio_transform& rhs) { return !(lhs == rhs); }
 
 // frame_transform
-frame_transform::frame_transform() {}
+frame_transform::frame_transform() = default;
 
 frame_transform& frame_transform::operator*=(const frame_transform& other)
 {
@@ -301,11 +318,11 @@ bool operator!=(const frame_transform& lhs, const frame_transform& rhs) { return
 tweened_transform::tweened_transform(const frame_transform& source,
                                      const frame_transform& dest,
                                      int                    duration,
-                                     const tweener&         tween)
+                                     tweener                tween)
     : source_(source)
     , dest_(dest)
     , duration_(duration)
-    , tweener_(tween)
+    , tweener_(std::move(tween))
 {
 }
 
@@ -321,7 +338,7 @@ frame_transform tweened_transform::fetch()
 
 void tweened_transform::tick(int num) { time_ = std::min(time_ + num, duration_); }
 
-boost::optional<chroma::legacy_type> get_chroma_mode(const std::wstring& str)
+std::optional<chroma::legacy_type> get_chroma_mode(const std::wstring& str)
 {
     if (boost::iequals(str, L"none")) {
         return chroma::legacy_type::none;
@@ -332,7 +349,7 @@ boost::optional<chroma::legacy_type> get_chroma_mode(const std::wstring& str)
     if (boost::iequals(str, L"blue")) {
         return chroma::legacy_type::blue;
     } else {
-        return boost::none;
+        return {};
     }
 }
 

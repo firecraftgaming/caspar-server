@@ -871,11 +871,20 @@ struct bluefish_consumer_proxy : public core::frame_consumer
     int index() const override { return 400 + config_.device_index; }
 
     bool has_synchronization_clock() const override { return true; }
+
+    core::monitor::state state() const override
+    {
+        core::monitor::state state;
+        state["bluefish/index"]          = config_.device_index;
+        state["bluefish/stream"]         = static_cast<unsigned int>(config_.device_stream);
+        state["bluefish/embedded_audio"] = config_.embedded_audio;
+        return state;
+    }
 };
 
 spl::shared_ptr<core::frame_consumer> create_consumer(const std::vector<std::wstring>&     params,
                                                       const core::video_format_repository& format_repository,
-                                                      std::vector<spl::shared_ptr<core::video_channel>> channels)
+                                                      const std::vector<spl::shared_ptr<core::video_channel>>& channels)
 {
     if (params.size() < 1 || !boost::iequals(params.at(0), L"BLUEFISH")) {
         return core::frame_consumer::empty();
@@ -928,9 +937,9 @@ spl::shared_ptr<core::frame_consumer> create_consumer(const std::vector<std::wst
 }
 
 spl::shared_ptr<core::frame_consumer>
-create_preconfigured_consumer(const boost::property_tree::wptree&               ptree,
-                              const core::video_format_repository&              format_repository,
-                              std::vector<spl::shared_ptr<core::video_channel>> channels)
+create_preconfigured_consumer(const boost::property_tree::wptree&                      ptree,
+                              const core::video_format_repository&                     format_repository,
+                              const std::vector<spl::shared_ptr<core::video_channel>>& channels)
 {
     configuration config;
     auto          device_index = ptree.get(L"device", 1);

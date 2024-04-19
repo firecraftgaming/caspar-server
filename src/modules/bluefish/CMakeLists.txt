@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.16)
 project (bluefish)
 
 set(SOURCES
@@ -6,7 +6,6 @@ set(SOURCES
         producer/bluefish_producer.cpp
 		util/blue_velvet.cpp
 		bluefish.cpp
-		StdAfx.cpp
 )
 set(HEADERS
 	    consumer/bluefish_consumer.h
@@ -17,15 +16,16 @@ set(HEADERS
 	StdAfx.h
 )
 
-add_library(bluefish ${SOURCES} ${HEADERS})
-add_precompiled_header(bluefish StdAfx.h FORCEINCLUDE)
-configure_file("${PROJECT_SOURCE_DIR}/packages.config" "${CMAKE_CURRENT_BINARY_DIR}/packages.config")
-
-include_directories(..)
-include_directories(../..)
-include_directories(${BOOST_INCLUDE_PATH})
-include_directories(${TBB_INCLUDE_PATH})
-include_directories(${FFMPEG_INCLUDE_PATH})
+casparcg_add_module_project(bluefish
+    SOURCES ${SOURCES} ${HEADERS}
+	INIT_FUNCTION "bluefish::init"
+)
+target_include_directories(bluefish PRIVATE
+    ..
+    ../..
+    ${FFMPEG_INCLUDE_PATH}
+    )
+target_precompile_headers(bluefish PRIVATE "StdAfx.h")
 
 set_target_properties(bluefish PROPERTIES FOLDER modules)
 source_group(sources ./*)
@@ -34,11 +34,4 @@ source_group(sources\\producer producer/*)
 source_group(sources\\util util/*)
 source_group(sources\\interop interop/*)
 
-target_link_libraries(  bluefish 
-                        common 
-                        core 
-                        ffmpeg)
-
-casparcg_add_include_statement("modules/bluefish/bluefish.h")
-casparcg_add_init_statement("bluefish::init" "bluefish")
-casparcg_add_module_project("bluefish")
+target_link_libraries(bluefish ffmpeg)

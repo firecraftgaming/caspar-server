@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.16)
 project (screen)
 
 set(SOURCES
@@ -20,32 +20,29 @@ bin2c("consumer/screen.frag" "consumer_screen_fragment.h" "caspar::screen" "frag
 
 if (MSVC)
 else ()
-	set(OS_SPECIFIC_HEADERS
+	list(APPEND HEADERS
 			util/x11_util.h
 			)
-	set(OS_SPECIFIC_SOURCES
+	list(APPEND SOURCES
 			util/x11_util.cpp
 			)
 endif ()
 
-add_library(screen ${SOURCES} ${OS_SPECIFIC_SOURCES} ${HEADERS} ${OS_SPECIFIC_HEADERS})
-configure_file("${PROJECT_SOURCE_DIR}/packages.config" "${CMAKE_CURRENT_BINARY_DIR}/packages.config")
-
-include_directories(..)
-include_directories(../..)
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${BOOST_INCLUDE_PATH})
-include_directories(${TBB_INCLUDE_PATH})
-include_directories(${GLEW_INCLUDE_PATH})
-include_directories(${SFML_INCLUDE_PATH})
-include_directories(${FFMPEG_INCLUDE_PATH})
+casparcg_add_module_project(screen
+	SOURCES ${SOURCES} ${HEADERS}
+	INIT_FUNCTION "screen::init"
+)
+target_include_directories(screen PRIVATE
+    ..
+    ../..
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${GLEW_INCLUDE_PATH}
+    ${SFML_INCLUDE_PATH}
+    ${FFMPEG_INCLUDE_PATH}
+    )
 
 set_target_properties(screen PROPERTIES FOLDER modules)
 source_group(sources\\consumer consumer/*)
 source_group(sources ./*)
 
-target_link_libraries(screen common core accelerator ffmpeg)
-
-casparcg_add_include_statement("modules/screen/screen.h")
-casparcg_add_init_statement("screen::init" "screen")
-casparcg_add_module_project("screen")
+target_link_libraries(screen accelerator ffmpeg)

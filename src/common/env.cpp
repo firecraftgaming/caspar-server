@@ -88,7 +88,12 @@ void configure(const std::wstring& filename)
     try {
         initial = clean_path(boost::filesystem::initial_path().wstring());
 
-        boost::filesystem::wifstream file(initial + L"/" + filename);
+        std::wstring fullpath = filename;
+        if (!boost::filesystem::exists(fullpath)) {
+            fullpath = initial + L"/" + filename;
+        }
+
+        boost::filesystem::wifstream file(fullpath);
         boost::property_tree::read_xml(file,
                                        pt,
                                        boost::property_tree::xml_parser::trim_whitespace |
@@ -97,8 +102,8 @@ void configure(const std::wstring& filename)
         auto paths = pt.get_child(L"configuration.paths");
         media      = clean_path(paths.get(L"media-path", initial + L"/media/"));
 
-        auto log_path_node  = paths.get_child(L"log-path");
-        log_enabled = !log_path_node.get(L"<xmlattr>.disabled", false);
+        auto log_path_node = paths.get_child(L"log-path");
+        log_enabled        = !log_path_node.get(L"<xmlattr>.disabled", false);
         if (log_enabled) {
             log = clean_path(log_path_node.get_value(initial + L"/log/"));
         }

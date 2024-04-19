@@ -25,9 +25,8 @@
 
 #include <core/mixer/image/blend_modes.h>
 
-#include <boost/optional.hpp>
-
 #include <array>
+#include <optional>
 
 namespace caspar { namespace core {
 
@@ -49,6 +48,17 @@ struct chroma
     double softness                  = 0.0;
     double spill_suppress            = 0.0;
     double spill_suppress_saturation = 1.0;
+};
+
+struct edgeblend {
+    double left   = 0.0;
+    double right  = 0.0;
+    double top    = 0.0;
+    double bottom = 0.0;
+
+    double g      = 1.8;
+    double p      = 3.0;
+    double a      = 0.5;
 };
 
 struct levels final
@@ -91,6 +101,7 @@ struct image_transform final
     corners               perspective;
     core::levels          levels;
     core::chroma          chroma;
+    core::edgeblend       edgeblend;
 
     bool             is_key      = false;
     bool             invert      = false;
@@ -160,7 +171,7 @@ class tweened_transform
   public:
     tweened_transform() = default;
 
-    tweened_transform(const frame_transform& source, const frame_transform& dest, int duration, const tweener& tween);
+    tweened_transform(const frame_transform& source, const frame_transform& dest, int duration, tweener tween);
 
     const frame_transform& dest() const;
 
@@ -168,6 +179,6 @@ class tweened_transform
     void            tick(int num);
 };
 
-boost::optional<chroma::legacy_type> get_chroma_mode(const std::wstring& str);
+std::optional<chroma::legacy_type> get_chroma_mode(const std::wstring& str);
 
 }} // namespace caspar::core

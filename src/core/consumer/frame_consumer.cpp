@@ -161,9 +161,9 @@ class print_consumer_proxy : public frame_consumer
 };
 
 spl::shared_ptr<core::frame_consumer>
-frame_consumer_registry::create_consumer(const std::vector<std::wstring>&            params,
-                                         const core::video_format_repository&        format_repository,
-                                         std::vector<spl::shared_ptr<video_channel>> channels) const
+frame_consumer_registry::create_consumer(const std::vector<std::wstring>&                         params,
+                                         const core::video_format_repository&                     format_repository,
+                                         const std::vector<spl::shared_ptr<core::video_channel>>& channels) const
 {
     if (params.empty())
         CASPAR_THROW_EXCEPTION(invalid_argument() << msg_info("params cannot be empty"));
@@ -186,10 +186,10 @@ frame_consumer_registry::create_consumer(const std::vector<std::wstring>&       
 }
 
 spl::shared_ptr<frame_consumer>
-frame_consumer_registry::create_consumer(const std::wstring&                         element_name,
-                                         const boost::property_tree::wptree&         element,
-                                         const core::video_format_repository&        format_repository,
-                                         std::vector<spl::shared_ptr<video_channel>> channels) const
+frame_consumer_registry::create_consumer(const std::wstring&                                      element_name,
+                                         const boost::property_tree::wptree&                      element,
+                                         const core::video_format_repository&                     format_repository,
+                                         const std::vector<spl::shared_ptr<core::video_channel>>& channels) const
 {
     auto& preconfigured_consumer_factories = impl_->preconfigured_consumer_factories;
     auto  found                            = preconfigured_consumer_factories.find(element_name);
@@ -213,6 +213,11 @@ const spl::shared_ptr<frame_consumer>& frame_consumer::empty()
         std::wstring      name() const override { return L"empty"; }
         bool              has_synchronization_clock() const override { return false; }
         int               index() const override { return -1; }
+        core::monitor::state state() const override
+        {
+            static const monitor::state empty;
+            return empty;
+        }
     };
     static spl::shared_ptr<frame_consumer> consumer = spl::make_shared<empty_frame_consumer>();
     return consumer;

@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.16)
 project (common)
 
 set(SOURCES
@@ -10,12 +10,11 @@ set(SOURCES
 		env.cpp
 		filesystem.cpp
 		log.cpp
-		stdafx.cpp
 		tweener.cpp
 		utf.cpp
 )
 if (MSVC)
-	set(OS_SPECIFIC_SOURCES
+	list(APPEND SOURCES
 			compiler/vs/disable_silly_warnings.h
 
 			os/windows/filesystem.cpp
@@ -24,7 +23,7 @@ if (MSVC)
 			os/windows/windows.h
 	)
 else ()
-	set(OS_SPECIFIC_SOURCES
+	list(APPEND SOURCES
 			os/linux/filesystem.cpp
 			os/linux/prec_timer.cpp
 			os/linux/thread.cpp
@@ -62,14 +61,12 @@ set(HEADERS
 		utf.h
 )
 
-add_library(common ${SOURCES} ${HEADERS} ${OS_SPECIFIC_SOURCES})
-add_precompiled_header(common stdafx.h FORCEINCLUDE)
-configure_file("${PROJECT_SOURCE_DIR}/packages.config" "${CMAKE_CURRENT_BINARY_DIR}/packages.config")
-
-include_directories(..)
-include_directories(${BOOST_INCLUDE_PATH})
-include_directories(${TBB_INCLUDE_PATH})
-include_directories(${GLEW_INCLUDE_PATH})
+casparcg_add_library(common SOURCES ${SOURCES} ${HEADERS})
+target_include_directories(common PRIVATE
+    ..
+    ${GLEW_INCLUDE_PATH}
+    )
+target_precompile_headers(common PRIVATE "stdafx.h")
 
 source_group(sources ./*)
 source_group(sources\\gl gl/*)
