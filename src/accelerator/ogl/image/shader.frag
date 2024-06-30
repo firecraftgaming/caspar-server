@@ -11,6 +11,7 @@ uniform sampler2D	layer_key;
 uniform bool		is_hd;
 uniform bool		has_local_key;
 uniform bool		has_layer_key;
+uniform bool        is_key;
 uniform int			blend_mode;
 uniform int			keyer;
 uniform int			pixel_format;
@@ -577,7 +578,7 @@ void main()
         color = 1.0 - color;
     if (blend_mode >= 0)
         color = blend(color);
-    if (edgeblend && keyer != 1)
+    if (edgeblend && !is_key)
         color.rgb = Edgeblend(color.rgb, edgeblend_left, edgeblend_right, edgeblend_top, edgeblend_bottom, edgeblend_g, edgeblend_p, edgeblend_a);
 
     fragColor = color.bgra;
