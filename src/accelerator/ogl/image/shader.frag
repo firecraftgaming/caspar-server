@@ -577,7 +577,7 @@ void main()
         color = 1.0 - color;
     if (blend_mode >= 0)
         color = blend(color);
-    if (edgeblend)
+    if (edgeblend && keyer != 1)
         color.rgb = Edgeblend(color.rgb, edgeblend_left, edgeblend_right, edgeblend_top, edgeblend_bottom, edgeblend_g, edgeblend_p, edgeblend_a);
 
     fragColor = color.bgra;
