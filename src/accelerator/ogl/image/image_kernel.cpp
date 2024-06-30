@@ -289,7 +289,7 @@ struct image_kernel::impl
         shader_->set("background", texture_id::background);
         shader_->set("blend_mode", params.blend_mode);
         shader_->set("keyer", params.keyer);
-        shader_->set("is_key", params.is_key);
+        shader_->set("is_key", params.transform.is_key);
 
         // Setup image-adjustements
         shader_->set("invert", params.transform.invert);
