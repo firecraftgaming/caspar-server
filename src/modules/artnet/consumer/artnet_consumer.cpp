@@ -183,9 +183,9 @@ struct artnet_consumer : public core::frame_consumer
         send_dmx_data(sender, dmx_data, 512);
     }
 
-    vector<computed_fixture> compute_fixtures(sender sender)
+    std::vector<computed_fixture> compute_fixtures(sender sender)
     {
-        vector<computed_fixture> computed_fixtures;
+        std::vector<computed_fixture> computed_fixtures;
         for (auto fixture : sender.fixtures) {
             for (int i = 0; i < fixture.fixtureCount; i++) {
                 computed_fixture computed_fixture{};
