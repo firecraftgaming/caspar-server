@@ -257,11 +257,11 @@ std::vector<sender> get_senders_ptree(const boost::property_tree::wptree& ptree)
         ptree_verify_element_name(xml_sender, L"sender");
         sender s{};
 
-        sender.universe    = xml_sender.second.get(L"universe", sender.universe);
-        sender.host        = xml_sender.second.get(L"host", sender.host);
-        sender.port        = xml_sender.second.get(L"port", sender.port);
+        s.universe    = xml_sender.second.get(L"universe", s.universe);
+        s.host        = xml_sender.second.get(L"host", s.host);
+        s.port        = xml_sender.second.get(L"port", s.port);
 
-        sender.fixtures = get_fixtures_ptree(xml_sender.second);
+        s.fixtures = get_fixtures_ptree(xml_sender.second);
         senders.push_back(s);
     }
 
