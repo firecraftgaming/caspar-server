@@ -197,7 +197,7 @@ struct artnet_consumer : public core::frame_consumer
             }
         }
 
-        return &compute_fixtures;
+        return computed_fixtures;
     }
 
     void compute_senders()
