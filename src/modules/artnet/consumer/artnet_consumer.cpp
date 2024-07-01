@@ -199,7 +199,7 @@ struct artnet_consumer : public core::frame_consumer
         }
     }
 
-    void compute_fixtures(sender sender)
+    vector<computed_fixture> compute_fixtures(sender sender)
     {
         vector<computed_fixture> computed_fixtures;
         for (auto fixture : sender.fixtures) {
