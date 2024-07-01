@@ -259,7 +259,7 @@ struct artnet_consumer : public core::frame_consumer
 
         boost::system::error_code err;
         socket.send_to(boost::asio::buffer(buffer), remote_endpoint, 0, err);
-        CASPAR_LOG(trace) << "Sent DMX data to Artnet, universe: " << to_string(universe);
+        CASPAR_LOG(trace) << "Sent DMX data to Artnet, universe: " << std::to_string(universe);
         if (err)
             CASPAR_THROW_EXCEPTION(io_error() << msg_info(err.message()));
     }
