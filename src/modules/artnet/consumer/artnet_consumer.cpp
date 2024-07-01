@@ -189,9 +189,9 @@ struct artnet_consumer : public core::frame_consumer
         for (auto sender : config.senders) {
             computed_sender computed_sender = {};
 
-            std::string host_ = u8(this->config.host);
+            std::string host_ = u8(sender.host);
             computed_sender.endpoint =
-                boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(host_), this->config.port);
+                boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(host_), sender.port);
 
             computed_sender.universe = sender.universe;
             computed_sender.fixtures = compute_fixtures(sender);
