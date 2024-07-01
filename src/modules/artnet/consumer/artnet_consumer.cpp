@@ -100,7 +100,7 @@ struct artnet_consumer : public core::frame_consumer
 
     explicit artnet_consumer(configuration config)
         : config(std::move(config))
-        , io_service(create_running_io_service())
+        , io_service()
         , socket(io_service, udp::v4())
     {
         std::string host_ = u8(this->config.host);
