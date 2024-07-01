@@ -81,19 +81,14 @@ std::shared_ptr<boost::asio::io_service> create_running_io_service()
 
 struct configuration
 {
-    int            universe = 0;
-    std::wstring   host     = L"127.0.0.1";
-    unsigned short port     = 6454;
-
     int refreshRate = 10;
-
-    std::vector<fixture> fixtures;
+    std::vector<sender> senders;
 };
 
 struct artnet_consumer : public core::frame_consumer
 {
     const configuration           config;
-    std::vector<computed_fixture> computed_fixtures;
+    std::vector<computed_sender> computed_senders;
 
   public:
     // frame_consumer
@@ -103,11 +98,7 @@ struct artnet_consumer : public core::frame_consumer
         , io_service()
         , socket(io_service, udp::v4())
     {
-        std::string host_ = u8(this->config.host);
-        remote_endpoint =
-            boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(host_), this->config.port);
-
-        compute_fixtures();
+        compute_senders();
     }
 
     void initialize(const core::video_format_desc& /*format_desc*/, int /*channel_index*/) override
@@ -136,33 +127,7 @@ struct artnet_consumer : public core::frame_consumer
                     if (!frame)
                         continue; // No frame available
 
-                    uint8_t dmx_data[512];
-                    memset(dmx_data, 0, 512);
-
-                    for (auto computed_fixture : computed_fixtures) {
-                        auto     color = average_color(frame, computed_fixture.rectangle);
-                        uint8_t* ptr   = dmx_data + computed_fixture.address;
-
-                        switch (computed_fixture.type) {
-                            case FixtureType::DIMMER:
-                                ptr[0] = (uint8_t)(0.279 * color.r + 0.547 * color.g + 0.106 * color.b);
-                                break;
-                            case FixtureType::RGB:
-                                ptr[0] = color.r;
-                                ptr[1] = color.g;
-                                ptr[2] = color.b;
-                                break;
-                            case FixtureType::RGBW:
-                                uint8_t w = std::min(std::min(color.r, color.g), color.b);
-                                ptr[0]    = color.r - w;
-                                ptr[1]    = color.g - w;
-                                ptr[2]    = color.b - w;
-                                ptr[3]    = w;
-                                break;
-                        }
-                    }
-
-                    send_dmx_data(dmx_data, 512);
+                    send_computed_senders(frame);
                 } catch (...) {
                     CASPAR_LOG_CURRENT_EXCEPTION();
                 }
@@ -194,11 +159,8 @@ struct artnet_consumer : public core::frame_consumer
     core::monitor::state state() const override
     {
         core::monitor::state state;
-        state["artnet/computed-fixtures"] = computed_fixtures.size();
-        state["artnet/fixtures"]          = config.fixtures.size();
-        state["artnet/universe"]          = config.universe;
-        state["artnet/host"]              = config.host;
-        state["artnet/port"]              = config.port;
+        state["artnet/computed-senders"]  = computed_senders.size();
+        state["artnet/senders"]           = config.senders.size();
         state["artnet/refresh-rate"]      = config.refreshRate;
 
         return state;
@@ -215,6 +177,58 @@ struct artnet_consumer : public core::frame_consumer
     udp::socket   socket;
     udp::endpoint remote_endpoint;
 
+    void send_computed_senders(core::const_frame frame)
+    {
+        for (auto computed_sender : computed_senders)
+            send_computed_sender(computed_sender, frame);
+    }
+
+    void send_computed_sender(computed_sender sender, core::const_frame frame) {
+        uint8_t dmx_data[512];
+        memset(dmx_data, 0, 512);
+
+        for (auto computed_fixture : computed_sender.fixtures) {
+            auto     color = average_color(frame, computed_fixture.rectangle);
+            uint8_t* ptr   = dmx_data + computed_fixture.address;
+
+            switch (computed_fixture.type) {
+                case FixtureType::DIMMER:
+                    ptr[0] = (uint8_t)(0.279 * color.r + 0.547 * color.g + 0.106 * color.b);
+                    break;
+                case FixtureType::RGB:
+                    ptr[0] = color.r;
+                    ptr[1] = color.g;
+                    ptr[2] = color.b;
+                    break;
+                case FixtureType::RGBW:
+                    uint8_t w = std::min(std::min(color.r, color.g), color.b);
+                    ptr[0]    = color.r - w;
+                    ptr[1]    = color.g - w;
+                    ptr[2]    = color.b - w;
+                    ptr[3]    = w;
+                    break;
+            }
+        }
+
+        send_dmx_data(sender, dmx_data, 512);
+    }
+
+    void compute_senders()
+    {
+        computed_senders.clear();
+        for (auto sender : config.senders) {
+            computed_sender computed_sender = {};
+
+            std::string host_ = u8(this->config.host);
+            computed_sender.endpoint =
+                boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(host_), this->config.port);
+
+            computed_sender.universe = sender.universe;
+            computed_sender.fixtures = compute_fixtures(sender);
+            computed_senders.push_back(computed_sender);
+        }
+    }
+
     void compute_fixtures()
     {
         computed_fixtures.clear();
@@ -230,9 +244,9 @@ struct artnet_consumer : public core::frame_consumer
         }
     }
 
-    void send_dmx_data(const std::uint8_t* data, std::size_t length)
+    void send_dmx_data(computed_sender sender, const std::uint8_t* data, std::size_t length)
     {
-        int universe = this->config.universe;
+        int universe = sender.universe;
 
         std::uint8_t hUni = (universe >> 8) & 0xff;
         std::uint8_t lUni = universe & 0xff;
@@ -258,12 +272,31 @@ struct artnet_consumer : public core::frame_consumer
         }
 
         boost::system::error_code err;
-        socket.send_to(boost::asio::buffer(buffer), remote_endpoint, 0, err);
-        CASPAR_LOG(trace) << "Sent DMX data to Artnet, universe: " << std::to_string(universe);
+        socket.send_to(boost::asio::buffer(buffer), sender.endpoint, 0, err);
         if (err)
             CASPAR_THROW_EXCEPTION(io_error() << msg_info(err.message()));
     }
 };
+
+std::vector<sender> get_senders_ptree(const boost::property_tree::wptree& ptree)
+{
+    std::vector<sender> senders;
+
+    using boost::property_tree::wptree;
+    for (auto& xml_sender : ptree | witerate_children(L"senders") | welement_context_iteration) {
+        ptree_verify_element_name(xml_sender, L"sender");
+        sender s{};
+
+        sender.universe    = xml_sender.second.get(L"universe", sender.universe);
+        sender.host        = xml_sender.second.get(L"host", sender.host);
+        sender.port        = xml_sender.second.get(L"port", sender.port);
+
+        sender.fixtures = get_fixtures_ptree(xml_sender.second);
+        senders.push_back(s);
+    }
+
+    return senders;
+}
 
 std::vector<fixture> get_fixtures_ptree(const boost::property_tree::wptree& ptree)
 {
@@ -271,24 +304,23 @@ std::vector<fixture> get_fixtures_ptree(const boost::property_tree::wptree& ptre
 
     using boost::property_tree::wptree;
 
-    for (auto& xml_channel : ptree | witerate_children(L"fixtures") | welement_context_iteration) {
-        ptree_verify_element_name(xml_channel, L"fixture");
-
+    for (auto& xml_fixture : ptree | witerate_children(L"fixtures") | welement_context_iteration) {
+        ptree_verify_element_name(xml_fixture, L"fixture");
         fixture f{};
 
-        int startAddress = xml_channel.second.get(L"start-address", 0);
+        int startAddress = xml_fixture.second.get(L"start-address", 0);
         if (startAddress < 1)
             CASPAR_THROW_EXCEPTION(user_error() << msg_info(L"Fixture start address must be specified"));
 
         f.startAddress = startAddress - 1;
 
-        int fixtureCount = xml_channel.second.get(L"fixture-count", -1);
+        int fixtureCount = xml_fixture.second.get(L"fixture-count", -1);
         if (fixtureCount < 1)
             CASPAR_THROW_EXCEPTION(user_error() << msg_info(L"Fixture count must be specified"));
 
         f.fixtureCount = fixtureCount;
 
-        std::wstring type = xml_channel.second.get(L"type", L"");
+        std::wstring type = xml_fixture.second.get(L"type", L"");
         if (type.empty())
             CASPAR_THROW_EXCEPTION(user_error() << msg_info(L"Fixture type must be specified"));
 
@@ -302,7 +334,7 @@ std::vector<fixture> get_fixtures_ptree(const boost::property_tree::wptree& ptre
             CASPAR_THROW_EXCEPTION(user_error() << msg_info(L"Unknown fixture type"));
         }
 
-        int fixtureChannels = xml_channel.second.get(L"fixture-channels", -1);
+        int fixtureChannels = xml_fixture.second.get(L"fixture-channels", -1);
         if (fixtureChannels < 0)
             fixtureChannels = f.type;
         if (fixtureChannels < f.type)
@@ -314,19 +346,19 @@ std::vector<fixture> get_fixtures_ptree(const boost::property_tree::wptree& ptre
 
         box b{};
 
-        auto x = xml_channel.second.get(L"x", 0.0f);
-        auto y = xml_channel.second.get(L"y", 0.0f);
+        auto x = xml_fixture.second.get(L"x", 0.0f);
+        auto y = xml_fixture.second.get(L"y", 0.0f);
 
         b.x = x;
         b.y = y;
 
-        auto width  = xml_channel.second.get(L"width", 0.0f);
-        auto height = xml_channel.second.get(L"height", 0.0f);
+        auto width  = xml_fixture.second.get(L"width", 0.0f);
+        auto height = xml_fixture.second.get(L"height", 0.0f);
 
         b.width  = width;
         b.height = height;
 
-        auto rotation = xml_channel.second.get(L"rotation", 0.0f);
+        auto rotation = xml_fixture.second.get(L"rotation", 0.0f);
 
         b.rotation   = rotation;
         f.fixtureBox = b;
@@ -343,17 +375,12 @@ create_preconfigured_consumer(const boost::property_tree::wptree&               
                               const std::vector<spl::shared_ptr<core::video_channel>>& channels)
 {
     configuration config;
-
-    config.universe    = ptree.get(L"universe", config.universe);
-    config.host        = ptree.get(L"host", config.host);
-    config.port        = ptree.get(L"port", config.port);
     config.refreshRate = ptree.get(L"refresh-rate", config.refreshRate);
 
     if (config.refreshRate < 1)
         CASPAR_THROW_EXCEPTION(user_error() << msg_info(L"Refresh rate must be at least 1"));
 
-    config.fixtures = get_fixtures_ptree(ptree);
-
+    config.senders = get_senders_ptree(ptree);
     return spl::make_shared<artnet_consumer>(config);
 }
 }} // namespace caspar::artnet

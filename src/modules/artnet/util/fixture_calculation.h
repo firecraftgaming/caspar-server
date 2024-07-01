@@ -85,6 +85,20 @@ struct fixture
     box fixtureBox;
 };
 
+struct sender
+{
+    int            universe = 0;
+    std::wstring   host     = L"127.0.0.1";
+    unsigned short port     = 6454;
+    vector<fixture> fixtures;
+};
+
+struct computed_sender {
+    int                            universe = 0;
+    boost::asio::ip::udp::endpoint endpoint;
+    vector<computed_fixture>       fixtures;
+};
+
 rect  compute_rect(box fixtureBox, int index, int count);
 color average_color(const core::const_frame& frame, rect& rectangle);
 
