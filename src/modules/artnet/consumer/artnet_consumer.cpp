@@ -183,22 +183,6 @@ struct artnet_consumer : public core::frame_consumer
         send_dmx_data(sender, dmx_data, 512);
     }
 
-    void compute_senders()
-    {
-        computed_senders.clear();
-        for (auto sender : config.senders) {
-            computed_sender computed_sender = {};
-
-            std::string host_ = u8(sender.host);
-            computed_sender.endpoint =
-                boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(host_), sender.port);
-
-            computed_sender.universe = sender.universe;
-            computed_sender.fixtures = compute_fixtures(sender);
-            computed_senders.push_back(computed_sender);
-        }
-    }
-
     vector<computed_fixture> compute_fixtures(sender sender)
     {
         vector<computed_fixture> computed_fixtures;
@@ -214,6 +198,22 @@ struct artnet_consumer : public core::frame_consumer
         }
 
         return compute_fixtures;
+    }
+
+    void compute_senders()
+    {
+        computed_senders.clear();
+        for (auto sender : config.senders) {
+            computed_sender computed_sender = {};
+
+            std::string host_ = u8(sender.host);
+            computed_sender.endpoint =
+                boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(host_), sender.port);
+
+            computed_sender.universe = sender.universe;
+            computed_sender.fixtures = compute_fixtures(sender);
+            computed_senders.push_back(computed_sender);
+        }
     }
 
     void send_dmx_data(computed_sender sender, const std::uint8_t* data, std::size_t length)
