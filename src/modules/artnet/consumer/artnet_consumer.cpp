@@ -49,6 +49,36 @@ using namespace boost::asio::ip;
 
 namespace caspar { namespace artnet {
 
+std::shared_ptr<boost::asio::io_service> create_running_io_service()
+{
+    auto service = std::make_shared<boost::asio::io_service>();
+    // To keep the io_service::run() running although no pending async
+    // operations are posted.
+    auto work      = std::make_shared<boost::asio::io_service::work>(*service);
+    auto weak_work = std::weak_ptr<boost::asio::io_service::work>(work);
+    auto thread    = std::make_shared<std::thread>([service, weak_work] {
+        while (auto strong = weak_work.lock()) {
+            try {
+                service->run();
+            } catch (...) {
+                CASPAR_LOG_CURRENT_EXCEPTION();
+            }
+        }
+
+        CASPAR_LOG(info) << "[asio] Global io_service uninitialized.";
+    });
+
+    return std::shared_ptr<boost::asio::io_service>(service.get(), [service, work, thread](void*) mutable {
+        CASPAR_LOG(info) << "[asio] Shutting down global io_service.";
+        work.reset();
+        service->stop();
+        if (thread->get_id() != std::this_thread::get_id())
+            thread->join();
+        else
+            thread->detach();
+    });
+}
+
 struct configuration
 {
     int            universe = 0;
@@ -70,11 +100,8 @@ struct artnet_consumer : public core::frame_consumer
 
     explicit artnet_consumer(configuration config)
         : config(std::move(config))
-        , io_service_()
-        , socket(io_service_)
+        , socket(udp::v4())
     {
-        socket.open(udp::v4());
-
         std::string host_ = u8(this->config.host);
         remote_endpoint =
             boost::asio::ip::udp::endpoint(boost::asio::ip::address::from_string(host_), this->config.port);
@@ -183,7 +210,6 @@ struct artnet_consumer : public core::frame_consumer
     std::thread       thread_;
     std::atomic<bool> abort_request_{false};
 
-    io_service    io_service_;
     udp::socket   socket;
     udp::endpoint remote_endpoint;
 
@@ -231,6 +257,7 @@ struct artnet_consumer : public core::frame_consumer
 
         boost::system::error_code err;
         socket.send_to(boost::asio::buffer(buffer), remote_endpoint, 0, err);
+        CASPAR_LOG(trace) << "Sent DMX data to Artnet, universe: " << to_string(universe);
         if (err)
             CASPAR_THROW_EXCEPTION(io_error() << msg_info(err.message()));
     }
