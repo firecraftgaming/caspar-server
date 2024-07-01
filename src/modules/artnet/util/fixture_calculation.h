@@ -27,6 +27,10 @@
 #include <utility>
 #include <vector>
 
+#include <cstdint>
+#include <string>
+#include <boost/asio/ip/udp.hpp>
+
 namespace caspar { namespace artnet {
 
 enum FixtureType
@@ -88,16 +92,16 @@ struct fixture
 
 struct sender
 {
-    int            universe = 0;
-    std::wstring   host     = L"127.0.0.1";
-    unsigned short port     = 6454;
-    vector<fixture> fixtures;
+    int                  universe = 0;
+    std::wstring         host     = L"127.0.0.1";
+    unsigned short       port     = 6454;
+    std::vector<fixture> fixtures;
 };
 
 struct computed_sender {
-    int                            universe = 0;
-    boost::asio::ip::udp::endpoint endpoint;
-    vector<computed_fixture>       fixtures;
+    int                                 universe = 0;
+    boost::asio::ip::udp::endpoint      endpoint;
+    std::vector<computed_fixture>       fixtures;
 };
 
 rect  compute_rect(box fixtureBox, int index, int count);
