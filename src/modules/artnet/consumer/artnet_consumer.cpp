@@ -201,7 +201,7 @@ struct artnet_consumer : public core::frame_consumer
 
     void compute_fixtures(sender sender)
     {
-        computed_fixtures.clear();
+        vector<computed_fixture> computed_fixtures;
         for (auto fixture : sender.fixtures) {
             for (int i = 0; i < fixture.fixtureCount; i++) {
                 computed_fixture computed_fixture{};
@@ -212,6 +212,8 @@ struct artnet_consumer : public core::frame_consumer
                 computed_fixtures.push_back(computed_fixture);
             }
         }
+
+        return compute_fixtures;
     }
 
     void send_dmx_data(computed_sender sender, const std::uint8_t* data, std::size_t length)
@@ -247,26 +249,6 @@ struct artnet_consumer : public core::frame_consumer
             CASPAR_THROW_EXCEPTION(io_error() << msg_info(err.message()));
     }
 };
-
-std::vector<sender> get_senders_ptree(const boost::property_tree::wptree& ptree)
-{
-    std::vector<sender> senders;
-
-    using boost::property_tree::wptree;
-    for (auto& xml_sender : ptree | witerate_children(L"senders") | welement_context_iteration) {
-        ptree_verify_element_name(xml_sender, L"sender");
-        sender s{};
-
-        s.universe    = xml_sender.second.get(L"universe", s.universe);
-        s.host        = xml_sender.second.get(L"host", s.host);
-        s.port        = xml_sender.second.get(L"port", s.port);
-
-        s.fixtures = get_fixtures_ptree(xml_sender.second);
-        senders.push_back(s);
-    }
-
-    return senders;
-}
 
 std::vector<fixture> get_fixtures_ptree(const boost::property_tree::wptree& ptree)
 {
@@ -337,6 +319,26 @@ std::vector<fixture> get_fixtures_ptree(const boost::property_tree::wptree& ptre
     }
 
     return fixtures;
+}
+
+std::vector<sender> get_senders_ptree(const boost::property_tree::wptree& ptree)
+{
+    std::vector<sender> senders;
+
+    using boost::property_tree::wptree;
+    for (auto& xml_sender : ptree | witerate_children(L"senders") | welement_context_iteration) {
+        ptree_verify_element_name(xml_sender, L"sender");
+        sender s{};
+
+        s.universe    = xml_sender.second.get(L"universe", s.universe);
+        s.host        = xml_sender.second.get(L"host", s.host);
+        s.port        = xml_sender.second.get(L"port", s.port);
+
+        s.fixtures = get_fixtures_ptree(xml_sender.second);
+        senders.push_back(s);
+    }
+
+    return senders;
 }
 
 spl::shared_ptr<core::frame_consumer>
