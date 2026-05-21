@@ -53,6 +53,15 @@ struct uniform_block
     float chroma_spill_suppress            = 0;
     float chroma_spill_suppress_saturation = 0;
 
+    /* Edgeblend */
+    float edgeblend_left   = 0;
+    float edgeblend_right  = 0;
+    float edgeblend_top    = 0;
+    float edgeblend_bottom = 0;
+    float edgeblend_g      = 0;
+    float edgeblend_p      = 0;
+    float edgeblend_a      = 0;
+
     uint32_t flags = 0;
 };
 

@@ -103,6 +103,13 @@ image_transform image_transform::tween(double                 time,
         do_tween(time, source.chroma.spill_suppress_saturation, dest.chroma.spill_suppress_saturation, duration, tween);
     result.chroma.enable    = dest.chroma.enable;
     result.chroma.show_mask = dest.chroma.show_mask;
+    result.edgeblend.left   = do_tween(time, source.edgeblend.left, dest.edgeblend.left, duration, tween);
+    result.edgeblend.right  = do_tween(time, source.edgeblend.right, dest.edgeblend.right, duration, tween);
+    result.edgeblend.top    = do_tween(time, source.edgeblend.top, dest.edgeblend.top, duration, tween);
+    result.edgeblend.bottom = do_tween(time, source.edgeblend.bottom, dest.edgeblend.bottom, duration, tween);
+    result.edgeblend.g      = do_tween(time, source.edgeblend.g, dest.edgeblend.g, duration, tween);
+    result.edgeblend.p      = do_tween(time, source.edgeblend.p, dest.edgeblend.p, duration, tween);
+    result.edgeblend.a      = do_tween(time, source.edgeblend.a, dest.edgeblend.a, duration, tween);
     result.is_key           = source.is_key || dest.is_key;
     result.invert           = source.invert || dest.invert;
     result.is_mix           = source.is_mix || dest.is_mix;
@@ -144,8 +151,11 @@ bool operator==(const image_transform& lhs, const image_transform& rhs)
                eq(lhs.chroma.min_brightness, rhs.chroma.min_brightness) &&
                eq(lhs.chroma.softness, rhs.chroma.softness) &&
                eq(lhs.chroma.spill_suppress, rhs.chroma.spill_suppress) &&
-               eq(lhs.chroma.spill_suppress_saturation, rhs.chroma.spill_suppress_saturation) && lhs.crop == rhs.crop &&
-               lhs.perspective == rhs.perspective ||
+               eq(lhs.chroma.spill_suppress_saturation, rhs.chroma.spill_suppress_saturation) &&
+               eq(lhs.edgeblend.left, rhs.edgeblend.left) && eq(lhs.edgeblend.right, rhs.edgeblend.right) &&
+               eq(lhs.edgeblend.top, rhs.edgeblend.top) && eq(lhs.edgeblend.bottom, rhs.edgeblend.bottom) &&
+               eq(lhs.edgeblend.g, rhs.edgeblend.g) && eq(lhs.edgeblend.p, rhs.edgeblend.p) &&
+               eq(lhs.edgeblend.a, rhs.edgeblend.a) && lhs.crop == rhs.crop && lhs.perspective == rhs.perspective ||
            lhs.enable_geometry_modifiers == rhs.enable_geometry_modifiers;
 }
 

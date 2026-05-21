@@ -28,6 +28,8 @@ const uint levels_mask = 1u << 4;
 const uint csb_mask = 1u << 5;
 const uint chroma_mask = 1u << 6;
 const uint chroma_show_mask_mask = 1u << 7;
+const uint edgeblend_mask = 1u << 8;
+const uint is_key_mask = 1u << 9;
 
 layout(push_constant) uniform ParamsBlock {
     uint color_space_index;
@@ -57,6 +59,15 @@ layout(push_constant) uniform ParamsBlock {
     float chroma_softness;
     float chroma_spill_suppress;
     float chroma_spill_suppress_saturation;
+
+/* Edgeblend */
+    float edgeblend_left;
+    float edgeblend_right;
+    float edgeblend_top;
+    float edgeblend_bottom;
+    float edgeblend_g;
+    float edgeblend_p;
+    float edgeblend_a;
 
     uint flags;
 };
@@ -547,6 +558,34 @@ vec4 get_rgba_color()
     return vec4(0.0, 0.0, 0.0, 0.0);
 }
 
+float edgeblend_value(float pos, float boundary, float G, float P, float A)
+{
+    if (pos > boundary)
+        return 1.0;
+    float x = pos / boundary;
+    bool flipped = x >= 0.5;
+    if (flipped)
+        x = 1.0 - x;
+    float a = A;
+    if (flipped)
+        a = 1.0 - a;
+    float v = a * pow(2.0 * x, P);
+    if (flipped)
+        v = 1.0 - v;
+    return pow(v, 1.0 / G);
+}
+
+vec3 Edgeblend(vec3 color, float left, float right, float top, float bottom, float G, float P, float A)
+{
+    vec2 pos   = TexCoord2.st;
+    float blend = 1.0;
+    blend *= edgeblend_value(pos.x,       left,   G, P, A);
+    blend *= edgeblend_value(1.0 - pos.x, right,  G, P, A);
+    blend *= edgeblend_value(pos.y,       top,    G, P, A);
+    blend *= edgeblend_value(1.0 - pos.y, bottom, G, P, A);
+    return color * blend;
+}
+
 void main()
 {
     bool is_straight_alpha = (flags & is_straight_alpha_mask) == is_straight_alpha_mask;
@@ -557,6 +596,8 @@ void main()
     bool csb = (flags & csb_mask) == csb_mask;
     bool chroma = (flags & chroma_mask) == chroma_mask;
     bool chroma_show_mask = (flags & chroma_show_mask_mask) == chroma_show_mask_mask;
+    bool edgeblend = (flags & edgeblend_mask) == edgeblend_mask;
+    bool is_key = (flags & is_key_mask) == is_key_mask;
 
     vec4 color = get_rgba_color();
     if (is_straight_alpha)
@@ -576,6 +617,8 @@ void main()
         color = 1.0 - color;
     if (blend_mode >= 0)
         color = blend(color);
+    if (edgeblend && !is_key)
+        color.rgb = Edgeblend(color.rgb, edgeblend_left, edgeblend_right, edgeblend_top, edgeblend_bottom, edgeblend_g, edgeblend_p, edgeblend_a);
 
     // attachments store color in bgra format to match opengl accelerator
     fragColor = color.bgra;

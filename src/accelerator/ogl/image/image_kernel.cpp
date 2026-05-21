@@ -239,6 +239,20 @@ struct image_kernel::impl
             shader_->set("chroma", false);
         }
 
+        const auto& eb         = transforms.image_transform.edgeblend;
+        const bool  edgeblend_ = eb.left > epsilon || eb.right > epsilon || eb.top > epsilon || eb.bottom > epsilon;
+        shader_->set("edgeblend", edgeblend_);
+        shader_->set("is_key", transforms.image_transform.is_key);
+        if (edgeblend_) {
+            shader_->set("edgeblend_left", static_cast<float>(eb.left));
+            shader_->set("edgeblend_right", static_cast<float>(eb.right));
+            shader_->set("edgeblend_top", static_cast<float>(eb.top));
+            shader_->set("edgeblend_bottom", static_cast<float>(eb.bottom));
+            shader_->set("edgeblend_g", static_cast<float>(eb.g));
+            shader_->set("edgeblend_p", static_cast<float>(eb.p));
+            shader_->set("edgeblend_a", static_cast<float>(eb.a));
+        }
+
         // Setup blend_func
 
         if (transforms.image_transform.is_key) {

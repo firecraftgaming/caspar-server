@@ -326,6 +326,21 @@ struct image_kernel::impl
                 static_cast<float>(transforms.image_transform.chroma.spill_suppress_saturation);
         }
 
+        const auto& eb = transforms.image_transform.edgeblend;
+        if (eb.left > epsilon || eb.right > epsilon || eb.top > epsilon || eb.bottom > epsilon) {
+            uniforms.flags |= static_cast<uint32_t>(shader_flags::edgeblend);
+            uniforms.edgeblend_left   = static_cast<float>(eb.left);
+            uniforms.edgeblend_right  = static_cast<float>(eb.right);
+            uniforms.edgeblend_top    = static_cast<float>(eb.top);
+            uniforms.edgeblend_bottom = static_cast<float>(eb.bottom);
+            uniforms.edgeblend_g      = static_cast<float>(eb.g);
+            uniforms.edgeblend_p      = static_cast<float>(eb.p);
+            uniforms.edgeblend_a      = static_cast<float>(eb.a);
+        }
+        if (transforms.image_transform.is_key) {
+            uniforms.flags |= static_cast<uint32_t>(shader_flags::is_key);
+        }
+
         // Setup blend_func
         auto blend_mode = params.blend_mode;
         if (transforms.image_transform.is_key) {

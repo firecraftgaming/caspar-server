@@ -1018,6 +1018,48 @@ std::future<std::wstring> mixer_chroma_command(command_context& ctx)
     return make_ready_future<std::wstring>(L"202 MIXER OK\r\n");
 }
 
+std::future<std::wstring> mixer_edgeblend_command(command_context& ctx)
+{
+    if (ctx.parameters.empty()) {
+        auto eb = get_current_transform(ctx).share();
+        return std::async(std::launch::deferred, [eb]() -> std::wstring {
+            auto e = eb.get().image_transform.edgeblend;
+            return L"201 MIXER OK\r\n" + std::to_wstring(e.left) + L" " + std::to_wstring(e.right) + L" " +
+                   std::to_wstring(e.top) + L" " + std::to_wstring(e.bottom) + L" " + std::to_wstring(e.g) + L" " +
+                   std::to_wstring(e.p) + L" " + std::to_wstring(e.a) + L"\r\n";
+        });
+    }
+
+    transforms_applier transforms(ctx);
+
+    core::edgeblend eb;
+    eb.left   = std::stod(ctx.parameters.at(0));
+    eb.right  = ctx.parameters.size() > 1 ? std::stod(ctx.parameters.at(1)) : eb.left;
+    eb.top    = ctx.parameters.size() > 2 ? std::stod(ctx.parameters.at(2)) : eb.left;
+    eb.bottom = ctx.parameters.size() > 3 ? std::stod(ctx.parameters.at(3)) : eb.top;
+    if (ctx.parameters.size() > 4)
+        eb.g = std::stod(ctx.parameters.at(4));
+    if (ctx.parameters.size() > 5)
+        eb.p = std::stod(ctx.parameters.at(5));
+    if (ctx.parameters.size() > 6)
+        eb.a = std::stod(ctx.parameters.at(6));
+
+    int          duration = ctx.parameters.size() > 7 ? std::stoi(ctx.parameters.at(7)) : 0;
+    std::wstring tween    = ctx.parameters.size() > 8 ? ctx.parameters.at(8) : L"linear";
+
+    transforms.add(stage::transform_tuple_t(
+        ctx.layer_index(),
+        [=](frame_transform transform) -> frame_transform {
+            transform.image_transform.edgeblend = eb;
+            return transform;
+        },
+        duration,
+        tween));
+    transforms.apply();
+
+    return make_ready_future<std::wstring>(L"202 MIXER OK\r\n");
+}
+
 std::future<std::wstring> mixer_blend_command(command_context& ctx)
 {
     if (ctx.parameters.empty())
@@ -1774,6 +1816,7 @@ void register_commands(std::shared_ptr<amcp_command_repository_wrapper>& repo)
     repo->register_channel_command(L"Mixer Commands", L"MIXER KEYER", mixer_keyer_command, 0);
     repo->register_channel_command(L"Mixer Commands", L"MIXER INVERT", mixer_invert_command, 0);
     repo->register_channel_command(L"Mixer Commands", L"MIXER CHROMA", mixer_chroma_command, 0);
+    repo->register_channel_command(L"Mixer Commands", L"MIXER EDGEBLEND", mixer_edgeblend_command, 0);
     repo->register_channel_command(L"Mixer Commands", L"MIXER BLEND", mixer_blend_command, 0);
     repo->register_channel_command(L"Mixer Commands", L"MIXER OPACITY", mixer_opacity_command, 0);
     repo->register_channel_command(L"Mixer Commands", L"MIXER BRIGHTNESS", mixer_brightness_command, 0);

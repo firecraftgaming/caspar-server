@@ -35,7 +35,9 @@ enum class shader_flags : uint32_t
     levels            = 1 << 4,
     csb               = 1 << 5,
     chroma            = 1 << 6,
-    chroma_show_mask  = 1 << 7
+    chroma_show_mask  = 1 << 7,
+    edgeblend         = 1 << 8,
+    is_key            = 1 << 9
 };
 
 class pipeline final
